@@ -1,14 +1,39 @@
 
 import React, { useState } from 'react';
-import { MessageSquare, List, BarChart3, Settings, Play } from 'lucide-react';
+import { MessageSquare, List, BarChart3, Settings, Play, LogOut, Shield } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import ChatInterface from '@/components/ChatInterface';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import AuthLogin from '@/components/AuthLogin';
+import EnhancedChatInterface from '@/components/EnhancedChatInterface';
+import AdminPanel from '@/components/AdminPanel';
 import TestCasesList from '@/components/TestCasesList';
 import ReportViewer from '@/components/ReportViewer';
+import GeminiIntegration from '@/components/GeminiIntegration';
 
 const Index = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'tester'>('tester');
+  const [username, setUsername] = useState('');
   const [activeTab, setActiveTab] = useState('chat');
+
+  const handleLogin = (role: 'admin' | 'tester', user: string) => {
+    setUserRole(role);
+    setUsername(user);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setUserRole('tester');
+    setUsername('');
+    setActiveTab('chat');
+  };
+
+  if (!isAuthenticated) {
+    return <AuthLogin onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -20,13 +45,24 @@ const Index = () => {
               <h1 className="text-2xl font-bold text-primary">
                 Commusoft Automation Script
               </h1>
-              <p className="text-sm text-muted-foreground">by Karna</p>
+              <p className="text-sm text-muted-foreground">by Karna - AI-Powered Test Automation</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Badge variant={userRole === 'admin' ? 'destructive' : 'default'}>
+                  <Shield className="h-3 w-3 mr-1" />
+                  {userRole.toUpperCase()}
+                </Badge>
+                <span className="text-sm text-muted-foreground">Welcome, {username}</span>
+              </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 <span>System Ready</span>
               </div>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
             </div>
           </div>
         </div>
@@ -35,10 +71,10 @@ const Index = () => {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
+          <TabsList className={`grid w-full ${userRole === 'admin' ? 'grid-cols-5' : 'grid-cols-4'} mb-6`}>
             <TabsTrigger value="chat" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
-              Chat Interface
+              AI Chat
             </TabsTrigger>
             <TabsTrigger value="tests" className="flex items-center gap-2">
               <List className="h-4 w-4" />
@@ -52,20 +88,36 @@ const Index = () => {
               <Settings className="h-4 w-4" />
               Settings
             </TabsTrigger>
+            {userRole === 'admin' && (
+              <TabsTrigger value="admin" className="flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Admin
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="chat" className="mt-0">
-            <Card className="h-[700px] flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Command Interface
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 p-0">
-                <ChatInterface />
-              </CardContent>
-            </Card>
+            <div className="grid gap-4">
+              <GeminiIntegration 
+                isVisible={true} 
+                userRole={userRole}
+              />
+              <Card className="h-[700px] flex flex-col">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5" />
+                    AI-Powered Command Interface
+                    <Badge variant="secondary" className="ml-auto">Natural Language</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 p-0">
+                  <EnhancedChatInterface 
+                    userRole={userRole}
+                    geminiApiKey="your-gemini-api-key" // This would come from admin settings
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="tests" className="mt-0">
@@ -90,6 +142,7 @@ const Index = () => {
                       className="w-full mt-1 p-2 border rounded"
                       defaultValue="mvn test -Dtest="
                       placeholder="Enter Maven command template"
+                      readOnly={userRole !== 'admin'}
                     />
                   </div>
                   <div>
@@ -99,6 +152,7 @@ const Index = () => {
                       className="w-full mt-1 p-2 border rounded"
                       defaultValue="./test-output"
                       placeholder="Path to TestNG output directory"
+                      readOnly={userRole !== 'admin'}
                     />
                   </div>
                 </CardContent>
@@ -106,60 +160,39 @@ const Index = () => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Slack Integration</CardTitle>
+                  <CardTitle>Docker Configuration</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium">Slack Webhook URL</label>
-                    <input
-                      type="url"
-                      className="w-full mt-1 p-2 border rounded"
-                      placeholder="https://hooks.slack.com/services/..."
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Default Channel</label>
+                    <label className="text-sm font-medium">Container Port</label>
                     <input
                       type="text"
                       className="w-full mt-1 p-2 border rounded"
-                      placeholder="#automation-results"
+                      defaultValue="3000"
+                      placeholder="Port number"
+                      readOnly={userRole !== 'admin'}
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Users to Tag</label>
+                    <label className="text-sm font-medium">Environment</label>
                     <input
                       type="text"
                       className="w-full mt-1 p-2 border rounded"
-                      placeholder="@karna, @team"
+                      defaultValue="production"
+                      placeholder="deployment environment"
+                      readOnly={userRole !== 'admin'}
                     />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Auto-Discovery</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Test Classes Directory</label>
-                    <input
-                      type="text"
-                      className="w-full mt-1 p-2 border rounded"
-                      defaultValue="./src/test/java"
-                      placeholder="Path to test classes"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="auto-scan" defaultChecked />
-                    <label htmlFor="auto-scan" className="text-sm">
-                      Automatically scan for new test cases
-                    </label>
                   </div>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
+
+          {userRole === 'admin' && (
+            <TabsContent value="admin" className="mt-0">
+              <AdminPanel />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>
