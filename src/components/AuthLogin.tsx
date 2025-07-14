@@ -1,10 +1,9 @@
 
 import React, { useState } from 'react';
-import { LogIn, Shield, User } from 'lucide-react';
+import { LogIn, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 
 interface AuthLoginProps {
@@ -82,20 +81,6 @@ const AuthLogin = ({ onLogin }: AuthLoginProps) => {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-          
-          <div className="mt-6 pt-4 border-t">
-            <p className="text-xs text-center text-muted-foreground mb-2">Demo Accounts:</p>
-            <div className="flex flex-col gap-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span>admin / admin123</span>
-                <Badge variant="secondary">Admin</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>tester / test123</span>
-                <Badge variant="outline">Tester</Badge>
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
