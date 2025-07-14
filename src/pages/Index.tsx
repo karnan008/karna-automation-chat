@@ -1,10 +1,12 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MessageSquare, List, BarChart3, Settings, Play, LogOut, Shield } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 import AuthLogin from '@/components/AuthLogin';
 import EnhancedChatInterface from '@/components/EnhancedChatInterface';
 import AdminPanel from '@/components/AdminPanel';
@@ -12,11 +14,39 @@ import TestCasesList from '@/components/TestCasesList';
 import ReportViewer from '@/components/ReportViewer';
 import GeminiIntegration from '@/components/GeminiIntegration';
 
+interface TestConfig {
+  mavenCommand: string;
+  testOutputDir: string;
+  containerPort: string;
+  environment: string;
+}
+
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'tester'>('tester');
   const [username, setUsername] = useState('');
   const [activeTab, setActiveTab] = useState('chat');
+  const [testConfig, setTestConfig] = useState<TestConfig>({
+    mavenCommand: 'mvn test -Dtest=',
+    testOutputDir: './test-output',
+    containerPort: '3000',
+    environment: 'production'
+  });
+  const [isConfigLoading, setIsConfigLoading] = useState(false);
+  const { toast } = useToast();
+
+  // Load test configuration from localStorage on component mount
+  useEffect(() => {
+    const savedConfig = localStorage.getItem('testConfig');
+    if (savedConfig) {
+      try {
+        const parsedConfig = JSON.parse(savedConfig);
+        setTestConfig(parsedConfig);
+      } catch (error) {
+        console.error('Error loading test configuration:', error);
+      }
+    }
+  }, []);
 
   const handleLogin = (role: 'admin' | 'tester', user: string) => {
     setUserRole(role);
@@ -29,6 +59,46 @@ const Index = () => {
     setUserRole('tester');
     setUsername('');
     setActiveTab('chat');
+  };
+
+  const handleConfigChange = (field: keyof TestConfig, value: string) => {
+    setTestConfig(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveTestConfig = async () => {
+    if (userRole !== 'admin') {
+      toast({
+        title: "Access Denied",
+        description: "Only administrators can modify test configuration.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsConfigLoading(true);
+    try {
+      // Save to localStorage
+      localStorage.setItem('testConfig', JSON.stringify(testConfig));
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      toast({
+        title: "Configuration Saved",
+        description: "Test configuration has been updated successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save test configuration. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConfigLoading(false);
+    }
   };
 
   if (!isAuthenticated) {
@@ -132,27 +202,38 @@ const Index = () => {
             <div className="grid gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Test Configuration</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Test Configuration</CardTitle>
+                    <Button 
+                      onClick={handleSaveTestConfig} 
+                      disabled={isConfigLoading || userRole !== 'admin'}
+                      variant="outline"
+                    >
+                      {isConfigLoading ? 'Saving...' : 'Save Configuration'}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <label className="text-sm font-medium">Maven Test Command</label>
-                    <input
+                    <Input
                       type="text"
-                      className="w-full mt-1 p-2 border rounded"
-                      defaultValue="mvn test -Dtest="
+                      value={testConfig.mavenCommand}
+                      onChange={(e) => handleConfigChange('mavenCommand', e.target.value)}
                       placeholder="Enter Maven command template"
                       readOnly={userRole !== 'admin'}
+                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
                     />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Test Output Directory</label>
-                    <input
+                    <Input
                       type="text"
-                      className="w-full mt-1 p-2 border rounded"
-                      defaultValue="./test-output"
+                      value={testConfig.testOutputDir}
+                      onChange={(e) => handleConfigChange('testOutputDir', e.target.value)}
                       placeholder="Path to TestNG output directory"
                       readOnly={userRole !== 'admin'}
+                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
                     />
                   </div>
                 </CardContent>
@@ -165,22 +246,24 @@ const Index = () => {
                 <CardContent className="space-y-4">
                   <div>
                     <label className="text-sm font-medium">Container Port</label>
-                    <input
+                    <Input
                       type="text"
-                      className="w-full mt-1 p-2 border rounded"
-                      defaultValue="3000"
+                      value={testConfig.containerPort}
+                      onChange={(e) => handleConfigChange('containerPort', e.target.value)}
                       placeholder="Port number"
                       readOnly={userRole !== 'admin'}
+                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
                     />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Environment</label>
-                    <input
+                    <Input
                       type="text"
-                      className="w-full mt-1 p-2 border rounded"
-                      defaultValue="production"
+                      value={testConfig.environment}
+                      onChange={(e) => handleConfigChange('environment', e.target.value)}
                       placeholder="deployment environment"
                       readOnly={userRole !== 'admin'}
+                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
                     />
                   </div>
                 </CardContent>
