@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Settings, Slack, Key, Users, TestTube } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, Slack, Key, Users, TestTube, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,19 +8,65 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 
+interface AdminSettings {
+  geminiApiKey: string;
+  slackBotToken: string;
+  slackChannelId: string;
+  testCasesPath: string;
+}
+
 const AdminPanel = () => {
-  const [geminiApiKey, setGeminiApiKey] = useState('');
-  const [slackBotToken, setSlackBotToken] = useState('');
-  const [slackChannelId, setSlackChannelId] = useState('');
-  const [testCasesPath, setTestCasesPath] = useState('./src/test/java');
+  const [settings, setSettings] = useState<AdminSettings>({
+    geminiApiKey: '',
+    slackBotToken: '',
+    slackChannelId: '',
+    testCasesPath: './src/test/java'
+  });
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleSaveSettings = () => {
-    // This would typically save to backend/database
-    toast({
-      title: "Settings Saved",
-      description: "Configuration has been updated successfully.",
-    });
+  // Load settings from localStorage on component mount
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('adminSettings');
+    if (savedSettings) {
+      try {
+        const parsedSettings = JSON.parse(savedSettings);
+        setSettings(parsedSettings);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    }
+  }, []);
+
+  const handleInputChange = (field: keyof AdminSettings, value: string) => {
+    setSettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveSettings = async () => {
+    setIsLoading(true);
+    try {
+      // Save to localStorage
+      localStorage.setItem('adminSettings', JSON.stringify(settings));
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      toast({
+        title: "Settings Saved",
+        description: "Configuration has been updated successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleScanTests = () => {
@@ -39,10 +85,16 @@ const AdminPanel = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Settings className="h-6 w-6" />
-        <h2 className="text-2xl font-bold">Admin Panel</h2>
-        <Badge variant="destructive">Admin Only</Badge>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Settings className="h-6 w-6" />
+          <h2 className="text-2xl font-bold">Admin Panel</h2>
+          <Badge variant="destructive">Admin Only</Badge>
+        </div>
+        <Button onClick={handleSaveSettings} disabled={isLoading} className="flex items-center gap-2">
+          <Save className="h-4 w-4" />
+          {isLoading ? 'Saving...' : 'Save All Settings'}
+        </Button>
       </div>
 
       <Tabs defaultValue="integrations" className="w-full">
@@ -65,8 +117,8 @@ const AdminPanel = () => {
                 <label className="text-sm font-medium">Gemini API Key</label>
                 <Input
                   type="password"
-                  value={geminiApiKey}
-                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  value={settings.geminiApiKey}
+                  onChange={(e) => handleInputChange('geminiApiKey', e.target.value)}
                   placeholder="Enter your Gemini Pro API key"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
@@ -88,8 +140,8 @@ const AdminPanel = () => {
                 <label className="text-sm font-medium">Slack Bot Token</label>
                 <Input
                   type="password"
-                  value={slackBotToken}
-                  onChange={(e) => setSlackBotToken(e.target.value)}
+                  value={settings.slackBotToken}
+                  onChange={(e) => handleInputChange('slackBotToken', e.target.value)}
                   placeholder="xoxb-your-bot-token"
                 />
               </div>
@@ -97,14 +149,11 @@ const AdminPanel = () => {
                 <label className="text-sm font-medium">Default Channel ID</label>
                 <Input
                   type="text"
-                  value={slackChannelId}
-                  onChange={(e) => setSlackChannelId(e.target.value)}
+                  value={settings.slackChannelId}
+                  onChange={(e) => handleInputChange('slackChannelId', e.target.value)}
                   placeholder="C1234567890"
                 />
               </div>
-              <Button onClick={handleSaveSettings} className="w-full">
-                Save Integration Settings
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -152,8 +201,8 @@ const AdminPanel = () => {
                 <label className="text-sm font-medium">Test Classes Directory</label>
                 <Input
                   type="text"
-                  value={testCasesPath}
-                  onChange={(e) => setTestCasesPath(e.target.value)}
+                  value={settings.testCasesPath}
+                  onChange={(e) => handleInputChange('testCasesPath', e.target.value)}
                   placeholder="./src/test/java"
                 />
               </div>
