@@ -7,6 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { JavaTestParser, ParsedTestMethod } from '@/services/JavaTestParser';
 
+// Extend HTMLInputElement to support webkitdirectory
+declare module 'react' {
+  interface HTMLAttributes<T> extends AriaAttributes, DOMAttributes<T> {
+    webkitdirectory?: string;
+    directory?: string;
+  }
+}
+
 interface ProjectUploaderProps {
   onTestMethodsExtracted: (methods: ParsedTestMethod[]) => void;
 }
@@ -25,17 +33,30 @@ const ProjectUploader = ({ onTestMethodsExtracted }: ProjectUploaderProps) => {
     setIsUploading(true);
     
     try {
-      // Extract Java files
-      const javaFiles = Array.from(files).filter(file => file.name.endsWith('.java'));
+      // Filter for Java files, prioritizing test directories
+      const javaFiles = Array.from(files).filter(file => {
+        const isJavaFile = file.name.endsWith('.java');
+        const isInTestDir = file.webkitRelativePath.includes('/test/') || 
+                           file.webkitRelativePath.includes('\\test\\') ||
+                           file.webkitRelativePath.includes('/testcases/') ||
+                           file.webkitRelativePath.includes('\\testcases\\');
+        return isJavaFile && isInTestDir;
+      });
       
-      if (javaFiles.length === 0) {
+      // If no files in test directories, include all Java files
+      const finalJavaFiles = javaFiles.length > 0 ? javaFiles : 
+        Array.from(files).filter(file => file.name.endsWith('.java'));
+      
+      if (finalJavaFiles.length === 0) {
         toast({
-          title: "No Java Files Found",
-          description: "Please upload a folder containing Java test files.",
+          title: "No Java Test Files Found",
+          description: "Please upload a folder containing Java test files with @Test annotations.",
           variant: "destructive"
         });
         return;
       }
+
+      console.log(`Found ${finalJavaFiles.length} Java files to process`);
 
       // Parse Java files for @Test methods
       const methods = await JavaTestParser.parseJavaFiles(files);
@@ -43,7 +64,7 @@ const ProjectUploader = ({ onTestMethodsExtracted }: ProjectUploaderProps) => {
       if (methods.length === 0) {
         toast({
           title: "No Test Methods Found",
-          description: "No @Test annotated methods were found in the uploaded files.",
+          description: "No @Test annotated methods were found in the uploaded files. Make sure your test methods are properly annotated.",
           variant: "destructive"
         });
         return;
@@ -58,14 +79,14 @@ const ProjectUploader = ({ onTestMethodsExtracted }: ProjectUploaderProps) => {
 
       toast({
         title: "Project Uploaded Successfully",
-        description: `Found ${methods.length} test methods in ${javaFiles.length} Java files.`
+        description: `Found ${methods.length} test methods in ${finalJavaFiles.length} Java files.`
       });
 
     } catch (error) {
       console.error('Error processing project:', error);
       toast({
         title: "Upload Error",
-        description: "Failed to process the uploaded project.",
+        description: "Failed to process the uploaded project. Please check the console for details.",
         variant: "destructive"
       });
     } finally {
@@ -141,7 +162,8 @@ const ProjectUploader = ({ onTestMethodsExtracted }: ProjectUploaderProps) => {
             </div>
             <div className="text-xs text-muted-foreground">
               <p>• Upload your complete Java Selenium TestNG project folder</p>
-              <p>• The system will scan for @Test annotated methods</p>
+              <p>• The system will scan src/test/java and testcases directories</p>
+              <p>• Only @Test annotated methods will be extracted</p>
               <p>• Dependencies and configuration files will be preserved</p>
             </div>
           </div>
@@ -175,6 +197,9 @@ const ProjectUploader = ({ onTestMethodsExtracted }: ProjectUploaderProps) => {
                       <div className="text-sm font-medium">{method.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {method.className}#{method.methodName}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {method.filePath}
                       </div>
                     </div>
                     <div className="flex gap-1">

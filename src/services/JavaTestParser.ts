@@ -24,8 +24,8 @@ export class JavaTestParser {
   private static extractTestMethods(content: string, className: string): ParsedTestMethod[] {
     const methods: ParsedTestMethod[] = [];
     
-    // Regex to find @Test annotated methods
-    const testMethodRegex = /@Test[\s\S]*?(?:public|private|protected)?\s+void\s+([a-zA-Z_$][a-zA-Z\d_$]*)\s*\([^)]*\)\s*\{/g;
+    // Enhanced regex to find @Test annotated methods with better matching
+    const testMethodRegex = /@Test(?:\s*\([^)]*\))?\s*(?:\/\/.*\n)*\s*(?:\/\*[\s\S]*?\*\/\s*)*\s*(?:public|private|protected)?\s+void\s+([a-zA-Z_$][a-zA-Z\d_$]*)\s*\([^)]*\)\s*(?:throws\s+[^{]*?)?\s*\{/g;
     
     let match;
     while ((match = testMethodRegex.exec(content)) !== null) {
@@ -40,7 +40,8 @@ export class JavaTestParser {
       for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i].trim();
         if (line.startsWith('//') || line.startsWith('*') || line.startsWith('/**')) {
-          description = line.replace(/^(\/\/|\*|\/\*\*)\s*/, '') + ' ' + description;
+          const comment = line.replace(/^(\/\/|\*|\/\*\*)\s*/, '');
+          description = comment + ' ' + description;
         } else if (line === '' || line.startsWith('@')) {
           continue;
         } else {
@@ -79,20 +80,59 @@ export class JavaTestParser {
     
     // Add method name variations
     keywords.push(methodName.toLowerCase());
-    keywords.push(...methodName.split(/(?=[A-Z])/).map(word => word.toLowerCase()).filter(word => word.length > 0));
+    
+    // Split camelCase method name
+    const methodWords = methodName.split(/(?=[A-Z])/).map(word => word.toLowerCase()).filter(word => word.length > 0);
+    keywords.push(...methodWords);
     
     // Add description words
     if (description) {
-      keywords.push(...description.toLowerCase().split(/\s+/).filter(word => word.length > 2));
+      const descWords = description.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 2);
+      keywords.push(...descWords);
     }
     
     // Add class name variations
-    const classWords = className.replace(/Tests?$/, '').split(/(?=[A-Z])/).map(word => word.toLowerCase());
+    const className_clean = className.replace(/Tests?$/, '').replace(/Test$/, '');
+    const classWords = className_clean.split(/(?=[A-Z])/).map(word => word.toLowerCase()).filter(word => word.length > 0);
     keywords.push(...classWords);
     
+    // Add business domain keywords based on common patterns
+    const businessKeywords = this.extractBusinessKeywords(methodName, className);
+    keywords.push(...businessKeywords);
+    
     // Remove duplicates and common words
-    const commonWords = ['test', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+    const commonWords = ['test', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'should', 'will', 'can', 'this', 'that'];
     return [...new Set(keywords)].filter(keyword => !commonWords.includes(keyword) && keyword.length > 1);
+  }
+
+  private static extractBusinessKeywords(methodName: string, className: string): string[] {
+    const keywords: string[] = [];
+    const combined = (methodName + ' ' + className).toLowerCase();
+    
+    // Common business domain keywords
+    const domainKeywords = {
+      customer: ['customer', 'client', 'user', 'account'],
+      job: ['job', 'task', 'work', 'order', 'appointment'],
+      invoice: ['invoice', 'bill', 'payment', 'charge'],
+      create: ['create', 'add', 'new', 'insert'],
+      edit: ['edit', 'update', 'modify', 'change'],
+      delete: ['delete', 'remove', 'cancel'],
+      complete: ['complete', 'finish', 'done', 'close'],
+      schedule: ['schedule', 'book', 'plan'],
+      quote: ['quote', 'estimate', 'proposal']
+    };
+    
+    Object.entries(domainKeywords).forEach(([key, variants]) => {
+      if (variants.some(variant => combined.includes(variant))) {
+        keywords.push(key);
+        keywords.push(...variants.filter(v => combined.includes(v)));
+      }
+    });
+    
+    return keywords;
   }
 
   static async parseJavaFiles(files: FileList): Promise<ParsedTestMethod[]> {
@@ -119,11 +159,16 @@ export class JavaTestParser {
         });
         
         allMethods.push(...methods);
+        
+        if (methods.length > 0) {
+          console.log(`Extracted ${methods.length} test methods from ${file.name}:`, methods.map(m => m.methodName));
+        }
       } catch (error) {
         console.error(`Error parsing file ${file.name}:`, error);
       }
     }
     
+    console.log(`Total extracted test methods: ${allMethods.length}`);
     return allMethods;
   }
 
