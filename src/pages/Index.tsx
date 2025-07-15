@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, List, BarChart3, Settings, Play, LogOut, Shield } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -183,7 +182,8 @@ const Index = () => {
                 <CardContent className="flex-1 p-0">
                   <EnhancedChatInterface 
                     userRole={userRole}
-                    geminiApiKey="your-gemini-api-key" // This would come from admin settings
+                    geminiApiKey="your-gemini-api-key"
+                    testConfig={testConfig}
                   />
                 </CardContent>
               </Card>
@@ -191,7 +191,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="tests" className="mt-0">
-            <TestCasesList />
+            <TestCasesList testConfig={testConfig} />
           </TabsContent>
 
           <TabsContent value="reports" className="mt-0">

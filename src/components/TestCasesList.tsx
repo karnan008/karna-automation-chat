@@ -1,77 +1,52 @@
 
-import React, { useState } from 'react';
-import { Play, Plus, Download, Slack, CheckCircle, XCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Download, Slack, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import { MavenTestScanner, TestMethod } from '@/services/MavenTestScanner';
 
-interface TestCase {
-  id: string;
-  name: string;
-  description: string;
-  className: string;
-  methodName: string;
-  keywords: string[];
-  lastRun?: Date;
-  lastStatus?: 'success' | 'failure' | 'running';
+interface TestCasesListProps {
+  testConfig?: any;
 }
 
-const TestCasesList = () => {
-  const [testCases] = useState<TestCase[]>([
-    {
-      id: '1',
-      name: 'Create Customer',
-      description: 'Creates a new customer in Commusoft',
-      className: 'CustomerTests',
-      methodName: 'createCustomer',
-      keywords: ['create', 'customer', 'new customer', 'add customer'],
-      lastRun: new Date(Date.now() - 1000 * 60 * 30),
-      lastStatus: 'success'
-    },
-    {
-      id: '2',
-      name: 'Update Customer',
-      description: 'Updates existing customer information',
-      className: 'CustomerTests',
-      methodName: 'updateCustomer',
-      keywords: ['update', 'customer', 'edit customer', 'modify customer'],
-      lastRun: new Date(Date.now() - 1000 * 60 * 45),
-      lastStatus: 'failure'
-    },
-    {
-      id: '3',
-      name: 'Delete Customer',
-      description: 'Deletes a customer from the system',
-      className: 'CustomerTests',
-      methodName: 'deleteCustomer',
-      keywords: ['delete', 'customer', 'remove customer']
-    },
-    {
-      id: '4',
-      name: 'Create Job',
-      description: 'Creates a new job in Commusoft',
-      className: 'JobTests',
-      methodName: 'createJob',
-      keywords: ['create', 'job', 'new job', 'add job'],
-      lastRun: new Date(Date.now() - 1000 * 60 * 10),
-      lastStatus: 'success'
-    },
-    {
-      id: '5',
-      name: 'Schedule Job',
-      description: 'Schedules a job for a specific date',
-      className: 'JobTests',
-      methodName: 'scheduleJob',
-      keywords: ['schedule', 'job', 'book job', 'assign job']
-    }
-  ]);
-
+const TestCasesList = ({ testConfig }: TestCasesListProps) => {
+  const [testCases, setTestCases] = useState<TestMethod[]>([]);
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
   const [runningTests, setRunningTests] = useState<Set<string>>(new Set());
+  const [isScanning, setIsScanning] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (testConfig) {
+      scanTestMethods();
+    }
+  }, [testConfig]);
+
+  const scanTestMethods = async () => {
+    setIsScanning(true);
+    try {
+      const scanner = new MavenTestScanner(testConfig);
+      const methods = await scanner.scanTestMethods();
+      setTestCases(methods);
+      
+      toast({
+        title: "Test Methods Scanned",
+        description: `Found ${methods.length} test methods`,
+      });
+    } catch (error) {
+      toast({
+        title: "Scan Error",
+        description: "Failed to scan test methods",
+        variant: "destructive"
+      });
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleTestSelection = (testId: string, checked: boolean) => {
     const newSelected = new Set(selectedTests);
@@ -83,14 +58,20 @@ const TestCasesList = () => {
     setSelectedTests(newSelected);
   };
 
-  const runSingleTest = async (testCase: TestCase) => {
+  const runSingleTest = async (testCase: TestMethod) => {
     setRunningTests(prev => new Set(prev).add(testCase.id));
     
     try {
-      // Simulate test execution
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const scanner = new MavenTestScanner(testConfig);
+      const success = await scanner.executeTest(testCase.className, testCase.methodName);
       
-      const success = Math.random() > 0.3;
+      // Update test case status
+      setTestCases(prev => prev.map(tc => 
+        tc.id === testCase.id 
+          ? { ...tc, lastRun: new Date(), lastStatus: success ? 'success' : 'failure' }
+          : tc
+      ));
+
       toast({
         title: success ? "Test Passed" : "Test Failed",
         description: `${testCase.name} execution completed`,
@@ -134,7 +115,6 @@ const TestCasesList = () => {
   };
 
   const downloadReport = () => {
-    // Simulate report download
     const reportData = {
       timestamp: new Date().toISOString(),
       totalTests: testCases.length,
@@ -159,7 +139,6 @@ const TestCasesList = () => {
   };
 
   const postToSlack = async () => {
-    // Simulate Slack integration
     try {
       const summary = {
         total: testCases.length,
@@ -168,7 +147,6 @@ const TestCasesList = () => {
         timestamp: new Date().toISOString()
       };
 
-      // This would be replaced with actual Slack webhook call
       console.log('Posting to Slack:', summary);
 
       toast({
@@ -202,6 +180,14 @@ const TestCasesList = () => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Test Cases ({testCases.length})</h2>
         <div className="flex gap-2">
+          <Button 
+            onClick={scanTestMethods} 
+            disabled={isScanning}
+            variant="outline"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isScanning ? 'animate-spin' : ''}`} />
+            {isScanning ? 'Scanning...' : 'Refresh Tests'}
+          </Button>
           <Button onClick={runSelectedTests} disabled={selectedTests.size === 0}>
             <Play className="h-4 w-4 mr-2" />
             Run Selected ({selectedTests.size})
@@ -216,6 +202,18 @@ const TestCasesList = () => {
           </Button>
         </div>
       </div>
+
+      {testCases.length === 0 && !isScanning && (
+        <Card className="p-8 text-center">
+          <p className="text-muted-foreground mb-4">
+            No test methods found. Configure your Maven test command in Settings and click "Refresh Tests".
+          </p>
+          <Button onClick={scanTestMethods} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Scan Test Methods
+          </Button>
+        </Card>
+      )}
 
       <ScrollArea className="h-[600px]">
         <div className="space-y-2">
@@ -239,6 +237,9 @@ const TestCasesList = () => {
                     <p className="text-sm text-muted-foreground mb-2">
                       {testCase.description}
                     </p>
+                    <div className="text-xs text-muted-foreground mb-2">
+                      {testCase.className}#{testCase.methodName}
+                    </div>
                     <div className="flex flex-wrap gap-1">
                       {testCase.keywords.map((keyword, index) => (
                         <Badge key={index} variant="secondary" className="text-xs">
