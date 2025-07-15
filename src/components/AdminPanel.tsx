@@ -1,12 +1,13 @@
-
 import React, { useState, useEffect } from 'react';
-import { Settings, Slack, Key, Users, TestTube, Save } from 'lucide-react';
+import { Settings, Slack, Key, Users, TestTube, Save, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import ProjectUploader from './ProjectUploader';
+import { ParsedTestMethod } from '@/services/JavaTestParser';
 
 interface AdminSettings {
   geminiApiKey: string;
@@ -15,7 +16,11 @@ interface AdminSettings {
   testCasesPath: string;
 }
 
-const AdminPanel = () => {
+interface AdminPanelProps {
+  onTestMethodsUpdated?: (methods: ParsedTestMethod[]) => void;
+}
+
+const AdminPanel = ({ onTestMethodsUpdated }: AdminPanelProps) => {
   const [settings, setSettings] = useState<AdminSettings>({
     geminiApiKey: '',
     slackBotToken: '',
@@ -77,6 +82,12 @@ const AdminPanel = () => {
     });
   };
 
+  const handleTestMethodsExtracted = (methods: ParsedTestMethod[]) => {
+    if (onTestMethodsUpdated) {
+      onTestMethodsUpdated(methods);
+    }
+  };
+
   const mockTesters = [
     { id: 1, username: 'john.doe', email: 'john@example.com', active: true },
     { id: 2, username: 'jane.smith', email: 'jane@example.com', active: true },
@@ -97,12 +108,17 @@ const AdminPanel = () => {
         </Button>
       </div>
 
-      <Tabs defaultValue="integrations" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="project" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="project">Project Upload</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="tests">Test Discovery</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="project" className="space-y-4">
+          <ProjectUploader onTestMethodsExtracted={handleTestMethodsExtracted} />
+        </TabsContent>
 
         <TabsContent value="integrations" className="space-y-4">
           <Card>

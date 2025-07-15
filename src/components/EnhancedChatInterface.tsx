@@ -1,347 +1,245 @@
-
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Brain, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Bot, User, Play, CheckCircle, XCircle, Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { GeminiService } from './GeminiIntegration';
+import { NaturalLanguageProcessor, ParsedCommand } from '@/services/NaturalLanguageProcessor';
 import { MavenTestScanner, TestMethod } from '@/services/MavenTestScanner';
-import { NaturalLanguageProcessor } from '@/services/NaturalLanguageProcessor';
+import { ParsedTestMethod } from '@/services/JavaTestParser';
 
 interface Message {
   id: string;
-  type: 'user' | 'system' | 'ai-analysis' | 'test-result' | 'ai-summary';
+  type: 'user' | 'bot' | 'system';
   content: string;
   timestamp: Date;
-  testCases?: string[];
-  status?: 'success' | 'failure' | 'running' | 'analyzing';
-  confidence?: number;
+  command?: ParsedCommand;
+  executionResult?: {
+    success: boolean;
+    details: string;
+  };
 }
 
 interface EnhancedChatInterfaceProps {
   userRole: 'admin' | 'tester';
-  geminiApiKey?: string;
-  testConfig?: any;
+  geminiApiKey: string;
+  testConfig: any;
+  uploadedTestMethods?: ParsedTestMethod[];
 }
 
-const EnhancedChatInterface = ({ userRole, geminiApiKey, testConfig }: EnhancedChatInterfaceProps) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      type: 'system',
-      content: '🤖 Welcome to Commusoft Automation Script by Karna! I can understand complex natural language commands like "create customer, edit that and then create a job to that customer and then complete that job and raise invoice for that job". Type your request and I\'ll execute the test sequence.',
-      timestamp: new Date()
-    }
-  ]);
+const EnhancedChatInterface = ({ 
+  userRole, 
+  geminiApiKey, 
+  testConfig,
+  uploadedTestMethods = []
+}: EnhancedChatInterfaceProps) => {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [geminiService, setGeminiService] = useState<GeminiService | null>(null);
   const [testMethods, setTestMethods] = useState<TestMethod[]>([]);
-  const [nlProcessor, setNlProcessor] = useState<NaturalLanguageProcessor | null>(null);
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
+  // Initialize with uploaded test methods
   useEffect(() => {
-    if (geminiApiKey) {
-      setGeminiService(new GeminiService(geminiApiKey));
-    }
-  }, [geminiApiKey]);
-
-  useEffect(() => {
-    if (testConfig) {
-      loadTestMethods();
-    }
-  }, [testConfig]);
-
-  useEffect(() => {
-    if (testMethods.length > 0) {
-      setNlProcessor(new NaturalLanguageProcessor(testMethods));
-    }
-  }, [testMethods]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const loadTestMethods = async () => {
-    try {
+    const initializeTestMethods = async () => {
       const scanner = new MavenTestScanner(testConfig);
+      if (uploadedTestMethods.length > 0) {
+        scanner.setUploadedMethods(uploadedTestMethods);
+      }
       const methods = await scanner.scanTestMethods();
       setTestMethods(methods);
-    } catch (error) {
-      console.error('Error loading test methods:', error);
-    }
+      
+      if (methods.length > 0) {
+        addMessage('system', 
+          `✅ Loaded ${methods.length} test methods from your uploaded project. You can now use natural language commands like "create customer and edit job" to run tests.`
+        );
+      } else {
+        addMessage('system', 
+          '⚠️ No test methods loaded. Please upload your Java TestNG project in the Admin panel to enable test execution.'
+        );
+      }
+    };
+
+    initializeTestMethods();
+  }, [testConfig, uploadedTestMethods]);
+
+  const addMessage = (
+    type: 'user' | 'bot' | 'system',
+    content: string,
+    command?: ParsedCommand,
+    executionResult?: { success: boolean; details: string }
+  ) => {
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      type,
+      content,
+      timestamp: new Date(),
+      command,
+      executionResult
+    };
+    setMessages(prev => [...prev, newMessage]);
   };
 
-  const executeTestSequence = async (sequence: string[]): Promise<void> => {
-    const testResults = [];
-    const scanner = new MavenTestScanner(testConfig);
-
-    for (const testMethod of sequence) {
-      const [className, methodName] = testMethod.split('#');
-      const testName = testMethods.find(tm => 
-        tm.className === className && tm.methodName === methodName
-      )?.name || testMethod;
-
-      const runningMessage: Message = {
-        id: `${Date.now()}-${testMethod}`,
-        type: 'test-result',
-        content: `🔄 Running: ${testName}...`,
-        timestamp: new Date(),
-        status: 'running'
-      };
-
-      setMessages(prev => [...prev, runningMessage]);
-
-      try {
-        const success = await scanner.executeTest(className, methodName);
-        
-        const result = {
-          testName,
-          status: success ? 'success' : 'failure',
-          error: success ? null : 'Test execution failed'
-        };
-        
-        testResults.push(result);
-
-        const resultMessage: Message = {
-          id: `${Date.now()}-result-${testMethod}`,
-          type: 'test-result',
-          content: success 
-            ? `✅ ${testName} completed successfully!`
-            : `❌ ${testName} failed: ${result.error}`,
-          timestamp: new Date(),
-          status: success ? 'success' : 'failure'
-        };
-
-        setMessages(prev => [
-          ...prev.filter(msg => msg.id !== runningMessage.id),
-          resultMessage
-        ]);
-
-      } catch (error) {
-        testResults.push({
-          testName,
-          status: 'failure',
-          error: `Execution error: ${error}`
-        });
-      }
+  useEffect(() => {
+    // Scroll to bottom when messages update
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
+  }, [messages]);
 
-    // Generate AI summary if available
-    if (geminiService && testResults.length > 0) {
-      const summaryMessage: Message = {
-        id: `${Date.now()}-summary`,
-        type: 'ai-summary',
-        content: '🤖 Generating test summary...',
-        timestamp: new Date(),
-        status: 'analyzing'
-      };
-
-      setMessages(prev => [...prev, summaryMessage]);
-
-      try {
-        const aiSummary = await geminiService.generateTestSummary(testResults);
-        
-        setMessages(prev => [
-          ...prev.filter(msg => msg.id !== summaryMessage.id),
-          {
-            ...summaryMessage,
-            content: aiSummary,
-            status: 'success'
-          }
-        ]);
-
-      } catch (error) {
-        setMessages(prev => [
-          ...prev.filter(msg => msg.id !== summaryMessage.id),
-          {
-            ...summaryMessage,
-            content: `❌ Failed to generate AI summary: ${error}`,
-            status: 'failure'
-          }
-        ]);
-      }
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async () => {
     if (!inputValue.trim() || isProcessing) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: inputValue,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const userMessage = inputValue.trim();
+    setInputValue('');
+    
+    addMessage('user', userMessage);
     setIsProcessing(true);
 
-    if (!nlProcessor) {
-      const errorMessage: Message = {
-        id: `${Date.now()}-error`,
-        type: 'system',
-        content: 'Test methods not loaded. Please configure Maven settings and refresh.',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-      setIsProcessing(false);
-      setInputValue('');
-      return;
-    }
-
-    // Parse the complex command
-    const analysisMessage: Message = {
-      id: `${Date.now()}-analysis`,
-      type: 'ai-analysis',
-      content: '🧠 Analyzing your complex command...',
-      timestamp: new Date(),
-      status: 'analyzing'
-    };
-
-    setMessages(prev => [...prev, analysisMessage]);
-
     try {
-      const parsedCommand = nlProcessor.parseComplexCommand(inputValue);
-      
-      const analysisResult: Message = {
-        id: `${Date.now()}-analysis-result`,
-        type: 'ai-analysis',
-        content: `🎯 **Command Analysis:**\n\n${parsedCommand.reasoning}\n\n**Identified Sequence:** ${parsedCommand.sequence.length} test(s)\n\n**Confidence:** ${(parsedCommand.confidence * 100).toFixed(1)}%`,
-        timestamp: new Date(),
-        testCases: parsedCommand.sequence,
-        confidence: parsedCommand.confidence,
-        status: 'success'
-      };
-
-      setMessages(prev => [
-        ...prev.filter(msg => msg.id !== analysisMessage.id),
-        analysisResult
-      ]);
-
-      // Execute the sequence
-      if (parsedCommand.sequence.length > 0) {
-        await executeTestSequence(parsedCommand.sequence);
-      } else {
-        const noMatchMessage: Message = {
-          id: `${Date.now()}-no-match`,
-          type: 'system',
-          content: `I couldn't identify test methods from your command. Available tests: ${testMethods.map(tm => tm.name).join(', ')}`,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, noMatchMessage]);
+      if (testMethods.length === 0) {
+        addMessage('bot', 
+          '❌ No test methods are available. Please upload your Java TestNG project in the Admin panel first.'
+        );
+        return;
       }
 
+      // Process natural language command
+      const processor = new NaturalLanguageProcessor(testMethods);
+      const parsedCommand = processor.parseComplexCommand(userMessage);
+      
+      if (parsedCommand.sequence.length === 0) {
+        addMessage('bot', 
+          `❌ I couldn't identify any test methods from your command: "${userMessage}"\n\n` +
+          `Available test methods:\n${testMethods.slice(0, 5).map(m => `• ${m.name}`).join('\n')}` +
+          (testMethods.length > 5 ? `\n... and ${testMethods.length - 5} more` : '')
+        );
+        return;
+      }
+
+      // Show parsed command
+      const botResponse = `🤖 **Command Parsed:** ${parsedCommand.reasoning}\n\n` +
+        `**Execution Plan:**\n${parsedCommand.sequence.map((cmd, idx) => `${idx + 1}. ${cmd}`).join('\n')}\n\n` +
+        `**Maven Command:** \`mvn test -Dtest=${parsedCommand.sequence.join(',')}\`\n\n` +
+        `Executing tests...`;
+      
+      addMessage('bot', botResponse, parsedCommand);
+
+      // Execute tests
+      const scanner = new MavenTestScanner(testConfig);
+      const results: string[] = [];
+      
+      for (const testCommand of parsedCommand.sequence) {
+        const [className, methodName] = testCommand.split('#');
+        const success = await scanner.executeTest(className, methodName);
+        results.push(`${testCommand}: ${success ? '✅ PASSED' : '❌ FAILED'}`);
+      }
+
+      const executionSummary = `**Execution Results:**\n${results.join('\n')}\n\n` +
+        `**Summary:** ${results.filter(r => r.includes('✅')).length}/${results.length} tests passed`;
+      
+      addMessage('system', executionSummary, undefined, {
+        success: results.every(r => r.includes('✅')),
+        details: executionSummary
+      });
+
     } catch (error) {
-      setMessages(prev => [
-        ...prev.filter(msg => msg.id !== analysisMessage.id),
-        {
-          id: `${Date.now()}-error`,
-          type: 'system',
-          content: `❌ Analysis failed: ${error}`,
-          timestamp: new Date()
-        }
-      ]);
-    }
-
-    setInputValue('');
-    setIsProcessing(false);
-  };
-
-  const getMessageIcon = (message: Message) => {
-    switch (message.type) {
-      case 'ai-analysis':
-        return <Brain className="h-4 w-4 text-blue-500" />;
-      case 'ai-summary':
-        return <Sparkles className="h-4 w-4 text-purple-500" />;
-      default:
-        return null;
+      console.error('Error processing command:', error);
+      addMessage('bot', '❌ An error occurred while processing your command. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
     <div className="flex flex-col h-full">
-      <ScrollArea className="flex-1 p-4 space-y-4">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${
-              message.type === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
-            <div
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.type === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : message.type === 'system'
-                  ? 'bg-muted'
-                  : message.type === 'ai-analysis'
-                  ? 'bg-blue-50 border border-blue-200'
-                  : message.type === 'ai-summary'
-                  ? 'bg-purple-50 border border-purple-200'
-                  : 'bg-card border'
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                {getMessageIcon(message)}
-                <div className="flex-1">
-                  <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                  <div className="text-xs opacity-70 mt-1 flex items-center gap-2">
-                    {message.timestamp.toLocaleTimeString()}
-                    {message.confidence && (
-                      <Badge variant="secondary" className="text-xs">
-                        {(message.confidence * 100).toFixed(0)}% confidence
-                      </Badge>
-                    )}
-                    {message.status && (
-                      <Badge
-                        variant={
-                          message.status === 'success'
-                            ? 'default'
-                            : message.status === 'failure'
-                            ? 'destructive'
-                            : message.status === 'analyzing'
-                            ? 'secondary'
-                            : 'secondary'
-                        }
-                        className="text-xs"
-                      >
-                        {message.status}
-                      </Badge>
-                    )}
+      <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+        <div className="space-y-4">
+          {messages.length === 0 && (
+            <div className="text-center text-muted-foreground py-8">
+              <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium mb-2">AI Test Assistant Ready</p>
+              <p className="text-sm">
+                {uploadedTestMethods.length > 0 
+                  ? `Type commands like "create customer and edit job" to run your ${uploadedTestMethods.length} uploaded test methods.`
+                  : 'Upload your Java TestNG project in the Admin panel to start running tests with natural language.'
+                }
+              </p>
+            </div>
+          )}
+          
+          {messages.map((message) => (
+            <div key={message.id} className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`w-8 h-8 rounded-full bg-${message.type === 'user' ? 'accent' : 'primary'} flex items-center justify-center`}>
+                {message.type === 'user' ? (
+                  <User className="h-4 w-4 text-accent-foreground" />
+                ) : (
+                  <Bot className="h-4 w-4 text-primary-foreground" />
+                )}
+              </div>
+              <div className="bg-muted p-3 rounded-lg max-w-[80%]">
+                <p className="text-sm">{message.content}</p>
+                {message.executionResult && (
+                  <div className="mt-2 p-2 rounded-md bg-muted-foreground/10">
+                    <p className="text-xs font-bold">
+                      {message.executionResult.success ? (
+                        <CheckCircle className="inline-block h-3 w-3 mr-1 text-green-500" />
+                      ) : (
+                        <XCircle className="inline-block h-3 w-3 mr-1 text-red-500" />
+                      )}
+                      Execution Result:
+                    </p>
+                    <p className="text-xs">{message.executionResult.details}</p>
                   </div>
-                </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {message.timestamp.toLocaleTimeString()}
+                </p>
               </div>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          ))}
+          
+          {isProcessing && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                <Loader className="h-4 w-4 text-primary-foreground animate-spin" />
+              </div>
+              <div className="bg-muted p-3 rounded-lg max-w-[80%]">
+                <p className="text-sm">Processing your command...</p>
+              </div>
+            </div>
+          )}
+        </div>
       </ScrollArea>
-
-      <div className="border-t p-4">
-        <form onSubmit={handleSubmit} className="flex gap-2">
+      
+      <div className="p-4 border-t">
+        <div className="flex gap-2">
           <Input
-            ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Try: 'create customer, edit that and then create a job to that customer and then complete that job and raise invoice for that job'"
-            disabled={isProcessing}
+            placeholder={
+              uploadedTestMethods.length > 0
+                ? "Try: 'create customer and edit job' or 'run all customer tests'"
+                : "Upload your Java project first to enable test commands"
+            }
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            disabled={isProcessing || uploadedTestMethods.length === 0}
+            className="flex-1"
           />
-          <Button type="submit" disabled={isProcessing || !inputValue.trim()}>
+          <Button 
+            onClick={handleSendMessage} 
+            disabled={!inputValue.trim() || isProcessing || uploadedTestMethods.length === 0}
+          >
             <Send className="h-4 w-4" />
           </Button>
-        </form>
-        
-        <div className="text-xs text-center text-muted-foreground mt-2 flex items-center justify-center gap-1">
-          <Brain className="h-3 w-3" />
-          Complex natural language processing enabled
         </div>
+        {uploadedTestMethods.length > 0 && (
+          <p className="text-xs text-muted-foreground mt-2">
+            💡 Tip: Use natural language like "create customer, edit it, then create job and complete it"
+          </p>
+        )}
       </div>
     </div>
   );

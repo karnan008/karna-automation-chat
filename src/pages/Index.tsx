@@ -12,6 +12,7 @@ import AdminPanel from '@/components/AdminPanel';
 import TestCasesList from '@/components/TestCasesList';
 import ReportViewer from '@/components/ReportViewer';
 import GeminiIntegration from '@/components/GeminiIntegration';
+import { ParsedTestMethod } from '@/services/JavaTestParser';
 
 interface TestConfig {
   mavenCommand: string;
@@ -32,6 +33,7 @@ const Index = () => {
     environment: 'production'
   });
   const [isConfigLoading, setIsConfigLoading] = useState(false);
+  const [uploadedTestMethods, setUploadedTestMethods] = useState<ParsedTestMethod[]>([]);
   const { toast } = useToast();
 
   // Load test configuration from localStorage on component mount
@@ -46,6 +48,23 @@ const Index = () => {
       }
     }
   }, []);
+
+  // Load uploaded test methods on component mount
+  useEffect(() => {
+    const savedMethods = localStorage.getItem('uploadedTestMethods');
+    if (savedMethods) {
+      try {
+        const methods = JSON.parse(savedMethods);
+        setUploadedTestMethods(methods);
+      } catch (error) {
+        console.error('Error loading uploaded test methods:', error);
+      }
+    }
+  }, []);
+
+  const handleTestMethodsUpdated = (methods: ParsedTestMethod[]) => {
+    setUploadedTestMethods(methods);
+  };
 
   const handleLogin = (role: 'admin' | 'tester', user: string) => {
     setUserRole(role);
@@ -184,6 +203,7 @@ const Index = () => {
                     userRole={userRole}
                     geminiApiKey="your-gemini-api-key"
                     testConfig={testConfig}
+                    uploadedTestMethods={uploadedTestMethods}
                   />
                 </CardContent>
               </Card>
@@ -273,7 +293,7 @@ const Index = () => {
 
           {userRole === 'admin' && (
             <TabsContent value="admin" className="mt-0">
-              <AdminPanel />
+              <AdminPanel onTestMethodsUpdated={handleTestMethodsUpdated} />
             </TabsContent>
           )}
         </Tabs>

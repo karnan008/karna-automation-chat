@@ -1,4 +1,6 @@
 
+import { ParsedTestMethod } from './JavaTestParser';
+
 export interface TestMethod {
   id: string;
   name: string;
@@ -8,74 +10,49 @@ export interface TestMethod {
   keywords: string[];
   lastRun?: Date;
   lastStatus?: 'success' | 'failure' | 'running';
+  packageName?: string;
+  filePath?: string;
 }
 
 export class MavenTestScanner {
   private testConfig: any;
+  private uploadedMethods: ParsedTestMethod[] = [];
 
   constructor(testConfig: any) {
     this.testConfig = testConfig;
+    this.loadUploadedMethods();
+  }
+
+  private loadUploadedMethods() {
+    const savedMethods = localStorage.getItem('uploadedTestMethods');
+    if (savedMethods) {
+      try {
+        this.uploadedMethods = JSON.parse(savedMethods);
+      } catch (error) {
+        console.error('Error loading uploaded test methods:', error);
+      }
+    }
   }
 
   async scanTestMethods(): Promise<TestMethod[]> {
     try {
-      // In a real implementation, this would scan the actual Maven project
-      // For now, we'll simulate scanning based on the Maven command pattern
-      const command = this.testConfig.mavenCommand || 'mvn test -Dtest=';
-      
-      // Simulate scanning Java test files
-      const mockTestMethods: TestMethod[] = [
-        {
-          id: '1',
-          name: 'Create Customer',
-          description: 'Creates a new customer in the system',
-          className: 'CustomerTests',
-          methodName: 'createCustomer',
-          keywords: ['create', 'customer', 'new customer', 'add customer', 'customer creation']
-        },
-        {
-          id: '2',
-          name: 'Edit Customer',
-          description: 'Updates existing customer information',
-          className: 'CustomerTests',
-          methodName: 'editCustomer',
-          keywords: ['edit', 'customer', 'update customer', 'modify customer', 'customer edit']
-        },
-        {
-          id: '3',
-          name: 'Delete Customer',
-          description: 'Removes a customer from the system',
-          className: 'CustomerTests',
-          methodName: 'deleteCustomer',
-          keywords: ['delete', 'customer', 'remove customer', 'customer deletion']
-        },
-        {
-          id: '4',
-          name: 'Create Job',
-          description: 'Creates a new job for a customer',
-          className: 'JobTests',
-          methodName: 'createJob',
-          keywords: ['create', 'job', 'new job', 'add job', 'job creation']
-        },
-        {
-          id: '5',
-          name: 'Complete Job',
-          description: 'Marks a job as completed',
-          className: 'JobTests',
-          methodName: 'completeJob',
-          keywords: ['complete', 'job', 'finish job', 'job completion']
-        },
-        {
-          id: '6',
-          name: 'Create Invoice',
-          description: 'Creates an invoice for a completed job',
-          className: 'InvoiceTests',
-          methodName: 'createInvoice',
-          keywords: ['create', 'invoice', 'raise invoice', 'generate invoice', 'bill']
-        }
-      ];
+      // If we have uploaded methods, use those instead of mock data
+      if (this.uploadedMethods.length > 0) {
+        return this.uploadedMethods.map(method => ({
+          id: method.id,
+          name: method.name,
+          description: method.description,
+          className: method.className,
+          methodName: method.methodName,
+          keywords: method.keywords,
+          packageName: method.packageName,
+          filePath: method.filePath
+        }));
+      }
 
-      return mockTestMethods;
+      // Fallback to empty array if no uploaded methods
+      console.log('No uploaded test methods found. Please upload your Java project in the Admin panel.');
+      return [];
     } catch (error) {
       console.error('Error scanning test methods:', error);
       return [];
@@ -96,5 +73,9 @@ export class MavenTestScanner {
       console.error('Error executing test:', error);
       return false;
     }
+  }
+
+  setUploadedMethods(methods: ParsedTestMethod[]) {
+    this.uploadedMethods = methods;
   }
 }
