@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Calendar, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { format } from 'date-fns';
 
 interface DateRange {
   from: Date | undefined;
-  to: Date | undefined;
+  to?: Date | undefined;
 }
 
 interface ReportDateFilterProps {
