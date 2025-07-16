@@ -14,6 +14,7 @@ import ReportViewer from '@/components/ReportViewer';
 import GeminiIntegration from '@/components/GeminiIntegration';
 import TestConfiguration from '@/components/TestConfiguration';
 import { ParsedTestMethod } from '@/services/JavaTestParser';
+import CodeViewer from '@/components/CodeViewer';
 
 interface TestConfig {
   mavenCommand: string;
@@ -200,7 +201,7 @@ const Index = () => {
             </TabsTrigger>
             <TabsTrigger value="code" className="flex items-center gap-2">
               <Code className="h-4 w-4" />
-              Code Viewer
+              Code Editor
             </TabsTrigger>
             {userRole === 'admin' && (
               <TabsTrigger value="admin" className="flex items-center gap-2">
@@ -287,26 +288,16 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="code" className="mt-0">
-            <Card>
+            <Card className="h-[800px] flex flex-col">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Code className="h-5 w-5" />
-                  Code Viewer & Editor
-                  <Badge variant="secondary">Coming Soon</Badge>
+                  Code Editor & Project Explorer
+                  <Badge variant="secondary">VS Code-like Experience</Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="text-center py-12">
-                  <Code className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">VS Code-like Editor</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Full project structure viewer with in-browser code editing capabilities
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    This feature will allow you to view and edit your Java Selenium test files 
-                    directly in the browser with syntax highlighting and file management.
-                  </p>
-                </div>
+              <CardContent className="flex-1 p-0">
+                <CodeViewer uploadedTestMethods={uploadedTestMethods} />
               </CardContent>
             </Card>
           </TabsContent>

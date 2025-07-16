@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Play, Download, Slack, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { Play, Download, Slack, CheckCircle, XCircle, Clock, RefreshCw, FileDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MavenTestScanner, TestMethod } from '@/services/MavenTestScanner';
 import { TestExecutionService } from '@/services/TestExecutionService';
 import { SlackService } from '@/services/SlackService';
+import { PDFReportService, TestReportData } from '@/services/PDFReportService';
 
 interface TestCasesListProps {
   testConfig?: any;
@@ -20,6 +21,7 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
   const [runningTests, setRunningTests] = useState<Set<string>>(new Set());
   const [isScanning, setIsScanning] = useState(false);
+  const [lastExecutionResults, setLastExecutionResults] = useState<any[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -78,6 +80,19 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
           : tc
       ));
 
+      // Store result for reporting
+      setLastExecutionResults(prev => [
+        ...prev.filter(r => r.testId !== testCase.id),
+        {
+          testId: testCase.id,
+          name: testCase.name,
+          status: result.status,
+          duration: result.endTime && result.startTime ? 
+            (result.endTime.getTime() - result.startTime.getTime()) / 1000 : undefined,
+          error: result.error
+        }
+      ]);
+
       toast({
         title: result.status === 'success' ? "Test Passed" : "Test Failed",
         description: `${testCase.name} execution completed${result.error ? `: ${result.error}` : ''}`,
@@ -109,6 +124,7 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
     }
 
     const selectedTestCases = testCases.filter(tc => selectedTests.has(tc.id));
+    const results: any[] = [];
     
     for (const testCase of selectedTestCases) {
       await runSingleTest(testCase);
@@ -144,6 +160,40 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
     });
   };
 
+  const downloadPDFReport = async () => {
+    if (lastExecutionResults.length === 0) {
+      toast({
+        title: "No Results Available",
+        description: "Please run some tests first to generate a PDF report",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const companyLogo = localStorage.getItem('companyLogo');
+      const reportData: TestReportData = {
+        testResults: lastExecutionResults,
+        summary: `k.ai executed ${lastExecutionResults.length} tests with ${lastExecutionResults.filter(r => r.status === 'success').length} passing and ${lastExecutionResults.filter(r => r.status === 'failure').length} failing.`,
+        executionDate: new Date(),
+        companyLogo: companyLogo || undefined
+      };
+
+      await PDFReportService.downloadPDFReport(reportData);
+
+      toast({
+        title: "PDF Report Generated",
+        description: "Test report has been prepared for download"
+      });
+    } catch (error) {
+      toast({
+        title: "PDF Generation Failed",
+        description: "Failed to generate PDF report",
+        variant: "destructive"
+      });
+    }
+  };
+
   const postToSlack = async () => {
     try {
       const adminSettings = JSON.parse(localStorage.getItem('adminSettings') || '{}');
@@ -160,26 +210,35 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
 
       const slackService = new SlackService(slackBotToken, slackChannelId);
       
-      const testResults = testCases.filter(tc => tc.lastStatus).map(tc => ({
-        name: tc.name,
-        status: tc.lastStatus,
-        className: tc.className,
-        methodName: tc.methodName
-      }));
+      const testResults = lastExecutionResults.length > 0 ? lastExecutionResults : 
+        testCases.filter(tc => tc.lastStatus).map(tc => ({
+          name: tc.name,
+          status: tc.lastStatus,
+          className: tc.className,
+          methodName: tc.methodName
+        }));
 
       const summary = `k.ai executed ${testResults.length} tests with ${testResults.filter(r => r.status === 'success').length} passing and ${testResults.filter(r => r.status === 'failure').length} failing.`;
 
-      await slackService.postTestReport(testResults, summary, slackChannelId);
+      const success = await slackService.postTestReport(testResults, summary, slackChannelId);
 
-      toast({
-        title: "Posted to Slack",
-        description: "Test results have been posted to the configured Slack channel successfully"
-      });
+      if (success) {
+        toast({
+          title: "Posted to Slack",
+          description: "Test results have been posted to the configured Slack channel successfully"
+        });
+      } else {
+        toast({
+          title: "Slack Posting Queued",
+          description: "Message queued for posting. Check admin panel for pending messages.",
+          variant: "default"
+        });
+      }
     } catch (error) {
       console.error('Slack posting error:', error);
       toast({
         title: "Slack Error",
-        description: "Failed to post results to Slack. Check your bot token and channel configuration.",
+        description: "Failed to post results to Slack. Message queued for retry.",
         variant: "destructive"
       });
     }
@@ -218,6 +277,10 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
           <Button variant="outline" onClick={downloadReport}>
             <Download className="h-4 w-4 mr-2" />
             Download Report
+          </Button>
+          <Button variant="outline" onClick={downloadPDFReport}>
+            <FileDown className="h-4 w-4 mr-2" />
+            PDF Report
           </Button>
           <Button variant="outline" onClick={postToSlack}>
             <Slack className="h-4 w-4 mr-2" />
@@ -291,6 +354,19 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
       </ScrollArea>
     </div>
   );
+};
+
+const getStatusIcon = (status?: 'success' | 'failure' | 'running') => {
+  switch (status) {
+    case 'success':
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
+    case 'failure':
+      return <XCircle className="h-4 w-4 text-red-500" />;
+    case 'running':
+      return <Clock className="h-4 w-4 text-yellow-500 animate-spin" />;
+    default:
+      return null;
+  }
 };
 
 export default TestCasesList;
