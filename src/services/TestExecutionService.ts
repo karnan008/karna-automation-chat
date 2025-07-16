@@ -30,13 +30,38 @@ export class TestExecutionService {
     };
 
     try {
+      // Debug logging
+      console.log(`🔍 Debug - testMethod.className: "${testMethod.className}"`);
+      console.log(`🔍 Debug - testMethod.methodName: "${testMethod.methodName}"`);
+      console.log(`🔍 Debug - testConfig.mavenCommand: "${this.testConfig.mavenCommand}"`);
+      
       // Build real Maven command with proper flags
       const testClass = `${testMethod.className}#${testMethod.methodName}`;
       const headlessFlag = this.testConfig.headlessMode ? '-Dheadless=true' : '-Dheadless=false';
-      const command = `${this.testConfig.mavenCommand}${testClass} ${headlessFlag} ${this.testConfig.testRunnerFlags || ''}`;
+      
+      // Clean up the Maven command template
+      let mavenCmd = this.testConfig.mavenCommand.trim();
+      
+      // Remove any existing test class from the command template
+      if (mavenCmd.includes('#')) {
+        mavenCmd = mavenCmd.split(' ')[0] + ' ' + mavenCmd.split(' ').slice(1).filter(part => !part.includes('#')).join(' ');
+      }
+      
+      // Ensure Maven command template ends with = and doesn't have extra spaces
+      if (!mavenCmd.endsWith('=')) {
+        if (mavenCmd.includes('-Dtest=')) {
+          // Already has -Dtest=, just ensure it ends with =
+          mavenCmd = mavenCmd.replace(/-Dtest=.*$/, '-Dtest=');
+        } else {
+          // Add -Dtest= 
+          mavenCmd += mavenCmd.endsWith(' ') ? '-Dtest=' : ' -Dtest=';
+        }
+      }
+      
+      const command = `${mavenCmd}${testClass} ${headlessFlag} ${this.testConfig.testRunnerFlags || ''}`.trim();
       
       console.log(`🚀 k.ai: Starting real test execution...`);
-      console.log(`📋 Command: ${command}`);
+      console.log(`📋 Final Command: ${command}`);
       console.log(`📂 Working Directory: ${this.testConfig.testRootPath}`);
       console.log(`🌐 Browser Mode: ${this.testConfig.headlessMode ? 'Headless' : 'Headed (Visible)'}`);
       
@@ -45,17 +70,14 @@ export class TestExecutionService {
       result.logs?.push(`📂 Test Root: ${this.testConfig.testRootPath}`);
       result.logs?.push(`🌐 Browser: ${this.testConfig.headlessMode ? 'Headless' : 'Headed'}`);
       
-      // Simulate real browser startup and test execution
-      await this.simulateRealExecution(result, testMethod);
+      // Execute actual Maven command
+      const executionResult = await this.executeActualCommand(command, result);
       
-      // Determine test result based on execution
-      const isSuccess = this.simulateTestExecution(testMethod);
-      
-      result.status = isSuccess ? 'success' : 'failure';
+      result.status = executionResult.success ? 'success' : 'failure';
       result.endTime = new Date();
       
-      if (!isSuccess) {
-        result.error = this.generateRealisticError(testMethod);
+      if (!executionResult.success) {
+        result.error = executionResult.error || 'Test execution failed';
         result.logs?.push(`❌ Test Failed: ${result.error}`);
         console.log(`❌ Test FAILED: ${testMethod.className}.${testMethod.methodName}`);
         console.log(`🔍 Error: ${result.error}`);
@@ -77,6 +99,58 @@ export class TestExecutionService {
       console.error(`💥 Test execution failed:`, error);
       
       return result;
+    }
+  }
+
+  private async executeActualCommand(command: string, result: TestExecutionResult): Promise<{success: boolean, error?: string}> {
+    try {
+      result.logs?.push(`🚀 Executing command: ${command}`);
+      console.log(`🚀 Executing command: ${command}`);
+      
+      // Create a backend API call to execute the command
+      const response = await fetch('/api/execute-command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          command: command,
+          workingDirectory: this.testConfig.testRootPath,
+          outputDirectory: this.testConfig.testOutputDir
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const executionResult = await response.json();
+      
+      // Log the command output
+      if (executionResult.stdout) {
+        result.logs?.push(`📋 Output: ${executionResult.stdout}`);
+        console.log(`📋 Command Output:`, executionResult.stdout);
+      }
+      
+      if (executionResult.stderr) {
+        result.logs?.push(`⚠️ Stderr: ${executionResult.stderr}`);
+        console.log(`⚠️ Command Stderr:`, executionResult.stderr);
+      }
+      
+      return {
+        success: executionResult.exitCode === 0,
+        error: executionResult.exitCode !== 0 ? executionResult.stderr || 'Command failed' : undefined
+      };
+      
+    } catch (error) {
+      console.error('Error executing command:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      result.logs?.push(`💥 Command execution failed: ${errorMessage}`);
+      
+      return {
+        success: false,
+        error: errorMessage
+      };
     }
   }
 
