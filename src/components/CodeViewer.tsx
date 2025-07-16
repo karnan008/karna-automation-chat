@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Folder, 
@@ -8,7 +7,9 @@ import {
   Save,
   Code,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  FileCode,
+  FileCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ interface FileNode {
   path: string;
   children?: FileNode[];
   content?: string;
+  isFromUpload?: boolean;
 }
 
 interface CodeViewerProps {
@@ -35,6 +37,7 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
   const [fileContent, setFileContent] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -42,6 +45,23 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
   }, [uploadedTestMethods]);
 
   const generateFileTree = () => {
+    if (uploadedTestMethods.length === 0) {
+      setFileTree([]);
+      return;
+    }
+
+    // Load real uploaded project files
+    const uploadedFiles = localStorage.getItem('uploadedProjectFiles');
+    let realFiles: any[] = [];
+    
+    if (uploadedFiles) {
+      try {
+        realFiles = JSON.parse(uploadedFiles);
+      } catch (error) {
+        console.error('Error loading uploaded files:', error);
+      }
+    }
+
     const tree: FileNode[] = [
       {
         name: 'src',
@@ -57,7 +77,7 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
                 name: 'java',
                 type: 'folder',
                 path: 'src/test/java',
-                children: generateTestFiles()
+                children: generateTestFiles(realFiles)
               }
             ]
           },
@@ -70,7 +90,7 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
                 name: 'java',
                 type: 'folder',
                 path: 'src/main/java',
-                children: []
+                children: generateMainFiles(realFiles)
               }
             ]
           }
@@ -80,13 +100,15 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
         name: 'pom.xml',
         type: 'file',
         path: 'pom.xml',
-        content: generatePomXml()
+        content: getFileContent(realFiles, 'pom.xml') || generatePomXml(),
+        isFromUpload: hasFileInUpload(realFiles, 'pom.xml')
       },
       {
         name: 'testng.xml',
         type: 'file',
         path: 'testng.xml',
-        content: generateTestNgXml()
+        content: getFileContent(realFiles, 'testng.xml') || generateTestNgXml(),
+        isFromUpload: hasFileInUpload(realFiles, 'testng.xml')
       }
     ];
 
@@ -94,9 +116,49 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
     setExpandedFolders(new Set(['src', 'src/test', 'src/test/java']));
   };
 
-  const generateTestFiles = (): FileNode[] => {
+  const getFileContent = (files: any[], fileName: string): string | null => {
+    const file = files.find(f => f.name === fileName || f.path.endsWith(fileName));
+    return file?.content || null;
+  };
+
+  const hasFileInUpload = (files: any[], fileName: string): boolean => {
+    return files.some(f => f.name === fileName || f.path.endsWith(fileName));
+  };
+
+  const generateTestFiles = (realFiles: any[]): FileNode[] => {
     const packageFolders: { [key: string]: FileNode } = {};
     
+    // First, add real uploaded test files
+    const testFiles = realFiles.filter(f => 
+      f.path.includes('/test/java/') && f.name.endsWith('.java')
+    );
+
+    testFiles.forEach(file => {
+      const relativePath = file.path.replace(/.*\/test\/java\//, '');
+      const pathParts = relativePath.split('/');
+      const fileName = pathParts.pop();
+      const packagePath = pathParts.join('/');
+      
+      if (packagePath && !packageFolders[packagePath]) {
+        packageFolders[packagePath] = {
+          name: pathParts[pathParts.length - 1] || 'default',
+          type: 'folder',
+          path: `src/test/java/${packagePath}`,
+          children: []
+        };
+      }
+      
+      const targetFolder = packagePath ? packageFolders[packagePath] : { children: [] as FileNode[] };
+      targetFolder.children?.push({
+        name: fileName!,
+        type: 'file',
+        path: `src/test/java/${relativePath}`,
+        content: file.content,
+        isFromUpload: true
+      });
+    });
+
+    // Then add any missing test methods from parsed data
     uploadedTestMethods.forEach(method => {
       const packagePath = method.packageName.replace(/\./g, '/');
       const fullPath = `src/test/java/${packagePath}`;
@@ -114,13 +176,50 @@ const CodeViewer = ({ uploadedTestMethods }: CodeViewerProps) => {
       const existing = packageFolders[packagePath].children?.find(f => f.name === fileName);
       
       if (!existing) {
+        const realFileContent = getFileContent(realFiles, fileName);
         packageFolders[packagePath].children?.push({
           name: fileName,
           type: 'file',
           path: `${fullPath}/${fileName}`,
-          content: generateJavaFileContent(method)
+          content: realFileContent || generateJavaFileContent(method),
+          isFromUpload: !!realFileContent
         });
       }
+    });
+
+    return Object.values(packageFolders);
+  };
+
+  const generateMainFiles = (realFiles: any[]): FileNode[] => {
+    const mainFiles = realFiles.filter(f => 
+      f.path.includes('/main/java/') && f.name.endsWith('.java')
+    );
+
+    const packageFolders: { [key: string]: FileNode } = {};
+    
+    mainFiles.forEach(file => {
+      const relativePath = file.path.replace(/.*\/main\/java\//, '');
+      const pathParts = relativePath.split('/');
+      const fileName = pathParts.pop();
+      const packagePath = pathParts.join('/');
+      
+      if (packagePath && !packageFolders[packagePath]) {
+        packageFolders[packagePath] = {
+          name: pathParts[pathParts.length - 1] || 'default',
+          type: 'folder',
+          path: `src/main/java/${packagePath}`,
+          children: []
+        };
+      }
+      
+      const targetFolder = packagePath ? packageFolders[packagePath] : { children: [] as FileNode[] };
+      targetFolder.children?.push({
+        name: fileName!,
+        type: 'file',
+        path: `src/main/java/${relativePath}`,
+        content: file.content,
+        isFromUpload: true
+      });
     });
 
     return Object.values(packageFolders);
@@ -138,13 +237,17 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import java.time.Duration;
 
+/**
+ * ${method.description || 'Test class generated by k.ai'}
+ * Generated from uploaded project analysis
+ */
 public class ${method.className} {
     private WebDriver driver;
     private WebDriverWait wait;
     
     @Test
     public void ${method.methodName}() {
-        // k.ai generated test method
+        // k.ai generated test method for: ${method.description || method.methodName}
         driver = new ChromeDriver();
         wait = new WebDriverWait(driver, Duration.ofSeconds(10));
         
@@ -231,19 +334,24 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
 
   const selectFile = (file: FileNode) => {
     if (file.type === 'file') {
+      if (hasUnsavedChanges) {
+        const confirmDiscard = window.confirm('You have unsaved changes. Do you want to discard them?');
+        if (!confirmDiscard) return;
+      }
+      
       setSelectedFile(file);
       setFileContent(file.content || '');
+      setHasUnsavedChanges(false);
     }
+  };
+
+  const handleContentChange = (newContent: string) => {
+    setFileContent(newContent);
+    setHasUnsavedChanges(true);
   };
 
   const saveFile = () => {
     if (selectedFile) {
-      // In a real implementation, this would save to the backend/filesystem
-      toast({
-        title: "File Saved",
-        description: `${selectedFile.name} has been saved successfully.`,
-      });
-      
       // Update the file content in the tree
       const updateFileInTree = (nodes: FileNode[]): FileNode[] => {
         return nodes.map(node => {
@@ -258,6 +366,12 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
       };
       
       setFileTree(updateFileInTree(fileTree));
+      setHasUnsavedChanges(false);
+      
+      toast({
+        title: "File Saved",
+        description: `${selectedFile.name} has been saved successfully.`,
+      });
     }
   };
 
@@ -290,9 +404,23 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
                 )}
               </>
             ) : (
-              <FileText className="h-4 w-4 mr-2 ml-5 text-gray-600" />
+              <>
+                {node.name.endsWith('.java') ? (
+                  <FileCode className="h-4 w-4 mr-2 ml-5 text-orange-500" />
+                ) : node.name.endsWith('.xml') ? (
+                  <FileText className="h-4 w-4 mr-2 ml-5 text-green-500" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2 ml-5 text-gray-600" />
+                )}
+                {node.isFromUpload && (
+                  <FileCheck className="h-3 w-3 mr-1 text-green-500" />
+                )}
+              </>
             )}
             <span className="text-sm">{node.name}</span>
+            {node.isFromUpload && (
+              <span className="text-xs text-green-600 ml-2">📁</span>
+            )}
           </div>
           {node.type === 'folder' && expandedFolders.has(node.path) && node.children && (
             <div>
@@ -311,6 +439,11 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
           <div className="flex items-center gap-2 mb-3">
             <Code className="h-5 w-5" />
             <span className="font-semibold">Project Explorer</span>
+            {uploadedTestMethods.length > 0 && (
+              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                {uploadedTestMethods.length} tests
+              </span>
+            )}
           </div>
           <div className="relative">
             <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
@@ -324,7 +457,15 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
         </div>
         <ScrollArea className="flex-1">
           <div className="p-2">
-            {renderFileTree(fileTree)}
+            {fileTree.length > 0 ? (
+              renderFileTree(fileTree)
+            ) : (
+              <div className="text-center text-muted-foreground p-4">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No project uploaded</p>
+                <p className="text-xs">Upload your Java project in Admin panel</p>
+              </div>
+            )}
           </div>
         </ScrollArea>
       </div>
@@ -335,13 +476,23 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
           <>
             <div className="flex items-center justify-between p-3 border-b bg-muted/20">
               <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
+                {selectedFile.name.endsWith('.java') ? (
+                  <FileCode className="h-4 w-4 text-orange-500" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
                 <span className="font-medium">{selectedFile.name}</span>
+                {hasUnsavedChanges && <span className="text-orange-500">•</span>}
                 <span className="text-xs text-muted-foreground">
                   {selectedFile.path}
                 </span>
+                {selectedFile.isFromUpload && (
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                    Uploaded
+                  </span>
+                )}
               </div>
-              <Button size="sm" onClick={saveFile}>
+              <Button size="sm" onClick={saveFile} disabled={!hasUnsavedChanges}>
                 <Save className="h-4 w-4 mr-2" />
                 Save
               </Button>
@@ -349,7 +500,7 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
             <div className="flex-1 p-3">
               <Textarea
                 value={fileContent}
-                onChange={(e) => setFileContent(e.target.value)}
+                onChange={(e) => handleContentChange(e.target.value)}
                 className="w-full h-full resize-none font-mono text-sm"
                 placeholder="File content will appear here..."
               />
@@ -363,6 +514,11 @@ ${uploadedTestMethods.map(m => `            <class name="${m.packageName}.${m.cl
               <p className="text-sm">
                 Choose a file from the project explorer to view and edit its contents
               </p>
+              {uploadedTestMethods.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  📁 Upload your Java TestNG project in the Admin panel to see real files
+                </p>
+              )}
             </div>
           </div>
         )}
