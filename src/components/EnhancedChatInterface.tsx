@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Play, CheckCircle, XCircle, Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { NaturalLanguageProcessor, ParsedCommand } from '@/services/NaturalLanguageProcessor';
 import { MavenTestScanner, TestMethod } from '@/services/MavenTestScanner';
+import { TestExecutionService } from '@/services/TestExecutionService';
 import { ParsedTestMethod } from '@/services/JavaTestParser';
 
 interface Message {
@@ -119,26 +121,35 @@ const EnhancedChatInterface = ({
         return;
       }
 
-      // Show parsed command
-      const botResponse = `🤖 **Command Parsed:** ${parsedCommand.reasoning}\n\n` +
+      // Show parsed command with k.ai branding
+      const botResponse = `🤖 **k.ai Command Analysis:** ${parsedCommand.reasoning}\n\n` +
         `**Execution Plan:**\n${parsedCommand.sequence.map((cmd, idx) => `${idx + 1}. ${cmd}`).join('\n')}\n\n` +
         `**Maven Command:** \`mvn test -Dtest=${parsedCommand.sequence.join(',')}\`\n\n` +
-        `Executing tests...`;
+        `Executing your tests with real browser automation...`;
       
       addMessage('bot', botResponse, parsedCommand);
 
-      // Execute tests
-      const scanner = new MavenTestScanner(testConfig);
+      // Execute tests with real execution service
+      const executionService = new TestExecutionService(testConfig);
       const results: string[] = [];
       
       for (const testCommand of parsedCommand.sequence) {
         const [className, methodName] = testCommand.split('#');
-        const success = await scanner.executeTest(className, methodName);
-        results.push(`${testCommand}: ${success ? '✅ PASSED' : '❌ FAILED'}`);
+        const testMethod = testMethods.find(t => t.className === className && t.methodName === methodName);
+        
+        if (testMethod) {
+          const result = await executionService.executeTest(testMethod);
+          results.push(`${testCommand}: ${result.status === 'success' ? '✅ PASSED' : '❌ FAILED'}`);
+          
+          if (result.error) {
+            results.push(`  Error: ${result.error}`);
+          }
+        }
       }
 
-      const executionSummary = `**Execution Results:**\n${results.join('\n')}\n\n` +
-        `**Summary:** ${results.filter(r => r.includes('✅')).length}/${results.length} tests passed`;
+      const executionSummary = `**k.ai Execution Results:**\n${results.join('\n')}\n\n` +
+        `**Summary:** ${results.filter(r => r.includes('✅')).length}/${parsedCommand.sequence.length} tests passed\n\n` +
+        `Real browser automation completed. Check your test environment for browser activity logs.`;
       
       addMessage('system', executionSummary, undefined, {
         success: results.every(r => r.includes('✅')),
@@ -147,7 +158,7 @@ const EnhancedChatInterface = ({
 
     } catch (error) {
       console.error('Error processing command:', error);
-      addMessage('bot', '❌ An error occurred while processing your command. Please try again.');
+      addMessage('bot', '❌ k.ai encountered an error while processing your command. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -160,10 +171,10 @@ const EnhancedChatInterface = ({
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
               <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium mb-2">AI Test Assistant Ready</p>
+              <p className="text-lg font-medium mb-2">k.ai Test Assistant Ready</p>
               <p className="text-sm">
                 {uploadedTestMethods.length > 0 
-                  ? `Type commands like "create customer and edit job" to run your ${uploadedTestMethods.length} uploaded test methods.`
+                  ? `Hi! I'm k.ai, your QA assistant. Type commands like "create customer and edit job" to run your ${uploadedTestMethods.length} uploaded test methods with real browser automation.`
                   : 'Upload your Java TestNG project in the Admin panel to start running tests with natural language.'
                 }
               </p>
@@ -221,8 +232,8 @@ const EnhancedChatInterface = ({
             onChange={(e) => setInputValue(e.target.value)}
             placeholder={
               uploadedTestMethods.length > 0
-                ? "Try: 'create customer and edit job' or 'run all customer tests'"
-                : "Upload your Java project first to enable test commands"
+                ? "Ask k.ai: 'create customer and edit job' or 'run all customer tests'"
+                : "Upload your Java project first to enable k.ai test commands"
             }
             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
             disabled={isProcessing || uploadedTestMethods.length === 0}
@@ -237,7 +248,7 @@ const EnhancedChatInterface = ({
         </div>
         {uploadedTestMethods.length > 0 && (
           <p className="text-xs text-muted-foreground mt-2">
-            💡 Tip: Use natural language like "create customer, edit it, then create job and complete it"
+            💡 k.ai tip: Use natural language like "create customer, edit it, then create job and complete it"
           </p>
         )}
       </div>

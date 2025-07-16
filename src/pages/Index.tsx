@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, List, BarChart3, Settings, Play, LogOut, Shield } from 'lucide-react';
+import { MessageSquare, List, BarChart3, Settings, Play, LogOut, Shield, Code } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import AdminPanel from '@/components/AdminPanel';
 import TestCasesList from '@/components/TestCasesList';
 import ReportViewer from '@/components/ReportViewer';
 import GeminiIntegration from '@/components/GeminiIntegration';
+import TestConfiguration from '@/components/TestConfiguration';
 import { ParsedTestMethod } from '@/services/JavaTestParser';
 
 interface TestConfig {
@@ -19,6 +20,9 @@ interface TestConfig {
   testOutputDir: string;
   containerPort: string;
   environment: string;
+  testRootPath: string;
+  headlessMode: boolean;
+  testRunnerFlags: string;
 }
 
 const Index = () => {
@@ -26,11 +30,15 @@ const Index = () => {
   const [userRole, setUserRole] = useState<'admin' | 'tester'>('tester');
   const [username, setUsername] = useState('');
   const [activeTab, setActiveTab] = useState('chat');
+  const [companyLogo, setCompanyLogo] = useState<string>('');
   const [testConfig, setTestConfig] = useState<TestConfig>({
     mavenCommand: 'mvn test -Dtest=',
     testOutputDir: './test-output',
     containerPort: '3000',
-    environment: 'production'
+    environment: 'production',
+    testRootPath: './src/test/java',
+    headlessMode: true,
+    testRunnerFlags: '-Dwebdriver.chrome.driver=auto'
   });
   const [isConfigLoading, setIsConfigLoading] = useState(false);
   const [uploadedTestMethods, setUploadedTestMethods] = useState<ParsedTestMethod[]>([]);
@@ -62,6 +70,14 @@ const Index = () => {
     }
   }, []);
 
+  useEffect(() => {
+    // Load company logo
+    const savedLogo = localStorage.getItem('companyLogo');
+    if (savedLogo) {
+      setCompanyLogo(savedLogo);
+    }
+  }, []);
+
   const handleTestMethodsUpdated = (methods: ParsedTestMethod[]) => {
     setUploadedTestMethods(methods);
   };
@@ -79,11 +95,8 @@ const Index = () => {
     setActiveTab('chat');
   };
 
-  const handleConfigChange = (field: keyof TestConfig, value: string) => {
-    setTestConfig(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleConfigChange = (config: TestConfig) => {
+    setTestConfig(config);
   };
 
   const handleSaveTestConfig = async () => {
@@ -129,11 +142,20 @@ const Index = () => {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-primary">
-                Commusoft Automation Script
-              </h1>
-              <p className="text-sm text-muted-foreground">by Karna - AI-Powered Test Automation</p>
+            <div className="flex items-center gap-4">
+              {companyLogo && (
+                <img 
+                  src={companyLogo} 
+                  alt="Company Logo" 
+                  className="h-10 w-auto max-w-32 object-contain"
+                />
+              )}
+              <div>
+                <h1 className="text-2xl font-bold text-primary">
+                  Commusoft Automation Script
+                </h1>
+                <p className="text-sm text-muted-foreground">by Karna - AI-Powered Test Automation with k.ai</p>
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
@@ -145,7 +167,7 @@ const Index = () => {
               </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span>System Ready</span>
+                <span>k.ai Ready</span>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
@@ -159,10 +181,10 @@ const Index = () => {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className={`grid w-full ${userRole === 'admin' ? 'grid-cols-5' : 'grid-cols-4'} mb-6`}>
+          <TabsList className={`grid w-full ${userRole === 'admin' ? 'grid-cols-6' : 'grid-cols-5'} mb-6`}>
             <TabsTrigger value="chat" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
-              AI Chat
+              k.ai Chat
             </TabsTrigger>
             <TabsTrigger value="tests" className="flex items-center gap-2">
               <List className="h-4 w-4" />
@@ -175,6 +197,10 @@ const Index = () => {
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               Settings
+            </TabsTrigger>
+            <TabsTrigger value="code" className="flex items-center gap-2">
+              <Code className="h-4 w-4" />
+              Code Viewer
             </TabsTrigger>
             {userRole === 'admin' && (
               <TabsTrigger value="admin" className="flex items-center gap-2">
@@ -194,8 +220,8 @@ const Index = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <MessageSquare className="h-5 w-5" />
-                    AI-Powered Command Interface
-                    <Badge variant="secondary" className="ml-auto">Natural Language</Badge>
+                    k.ai - AI-Powered Command Interface
+                    <Badge variant="secondary" className="ml-auto">Natural Language + Real Browser Automation</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 p-0">
@@ -219,76 +245,70 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="settings" className="mt-0">
-            <div className="grid gap-6">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Test Configuration</CardTitle>
-                    <Button 
-                      onClick={handleSaveTestConfig} 
-                      disabled={isConfigLoading || userRole !== 'admin'}
-                      variant="outline"
-                    >
-                      {isConfigLoading ? 'Saving...' : 'Save Configuration'}
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Maven Test Command</label>
-                    <Input
-                      type="text"
-                      value={testConfig.mavenCommand}
-                      onChange={(e) => handleConfigChange('mavenCommand', e.target.value)}
-                      placeholder="Enter Maven command template"
-                      readOnly={userRole !== 'admin'}
-                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Test Output Directory</label>
-                    <Input
-                      type="text"
-                      value={testConfig.testOutputDir}
-                      onChange={(e) => handleConfigChange('testOutputDir', e.target.value)}
-                      placeholder="Path to TestNG output directory"
-                      readOnly={userRole !== 'admin'}
-                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Docker Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Container Port</label>
-                    <Input
-                      type="text"
-                      value={testConfig.containerPort}
-                      onChange={(e) => handleConfigChange('containerPort', e.target.value)}
-                      placeholder="Port number"
-                      readOnly={userRole !== 'admin'}
-                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Environment</label>
-                    <Input
-                      type="text"
-                      value={testConfig.environment}
-                      onChange={(e) => handleConfigChange('environment', e.target.value)}
-                      placeholder="deployment environment"
-                      readOnly={userRole !== 'admin'}
-                      className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="space-y-6">
+              <TestConfiguration 
+                userRole={userRole}
+                testConfig={testConfig}
+                onConfigChange={handleConfigChange}
+              />
+              
+              {userRole === 'admin' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Docker Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">Container Port</label>
+                      <Input
+                        type="text"
+                        value={testConfig.containerPort}
+                        onChange={(e) => handleConfigChange({ ...testConfig, containerPort: e.target.value })}
+                        placeholder="Port number"
+                        readOnly={userRole !== 'admin'}
+                        className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Environment</label>
+                      <Input
+                        type="text"
+                        value={testConfig.environment}
+                        onChange={(e) => handleConfigChange({ ...testConfig, environment: e.target.value })}
+                        placeholder="deployment environment"
+                        readOnly={userRole !== 'admin'}
+                        className={userRole !== 'admin' ? 'bg-muted cursor-not-allowed' : ''}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="code" className="mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Code className="h-5 w-5" />
+                  Code Viewer & Editor
+                  <Badge variant="secondary">Coming Soon</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-12">
+                  <Code className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">VS Code-like Editor</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Full project structure viewer with in-browser code editing capabilities
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    This feature will allow you to view and edit your Java Selenium test files 
+                    directly in the browser with syntax highlighting and file management.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {userRole === 'admin' && (

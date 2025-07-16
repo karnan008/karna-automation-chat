@@ -8,6 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { MavenTestScanner, TestMethod } from '@/services/MavenTestScanner';
+import { TestExecutionService } from '@/services/TestExecutionService';
+import { SlackService } from '@/services/SlackService';
 
 interface TestCasesListProps {
   testConfig?: any;
@@ -62,20 +64,24 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
     setRunningTests(prev => new Set(prev).add(testCase.id));
     
     try {
-      const scanner = new MavenTestScanner(testConfig);
-      const success = await scanner.executeTest(testCase.className, testCase.methodName);
+      const executionService = new TestExecutionService(testConfig);
+      const result = await executionService.executeTest(testCase);
       
       // Update test case status
       setTestCases(prev => prev.map(tc => 
         tc.id === testCase.id 
-          ? { ...tc, lastRun: new Date(), lastStatus: success ? 'success' : 'failure' }
+          ? { 
+              ...tc, 
+              lastRun: result.endTime || new Date(), 
+              lastStatus: result.status as 'success' | 'failure'
+            }
           : tc
       ));
 
       toast({
-        title: success ? "Test Passed" : "Test Failed",
-        description: `${testCase.name} execution completed`,
-        variant: success ? "default" : "destructive"
+        title: result.status === 'success' ? "Test Passed" : "Test Failed",
+        description: `${testCase.name} execution completed${result.error ? `: ${result.error}` : ''}`,
+        variant: result.status === 'success' ? "default" : "destructive"
       });
     } catch (error) {
       toast({
@@ -140,23 +146,40 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
 
   const postToSlack = async () => {
     try {
-      const summary = {
-        total: testCases.length,
-        passed: testCases.filter(tc => tc.lastStatus === 'success').length,
-        failed: testCases.filter(tc => tc.lastStatus === 'failure').length,
-        timestamp: new Date().toISOString()
-      };
+      const adminSettings = JSON.parse(localStorage.getItem('adminSettings') || '{}');
+      const { slackBotToken, slackChannelId } = adminSettings;
+      
+      if (!slackBotToken || !slackChannelId) {
+        toast({
+          title: "Slack Not Configured",
+          description: "Please configure Slack integration in Admin settings first.",
+          variant: "destructive"
+        });
+        return;
+      }
 
-      console.log('Posting to Slack:', summary);
+      const slackService = new SlackService(slackBotToken, slackChannelId);
+      
+      const testResults = testCases.filter(tc => tc.lastStatus).map(tc => ({
+        name: tc.name,
+        status: tc.lastStatus,
+        className: tc.className,
+        methodName: tc.methodName
+      }));
+
+      const summary = `k.ai executed ${testResults.length} tests with ${testResults.filter(r => r.status === 'success').length} passing and ${testResults.filter(r => r.status === 'failure').length} failing.`;
+
+      await slackService.postTestReport(testResults, summary, slackChannelId);
 
       toast({
         title: "Posted to Slack",
-        description: "Test results have been posted to the configured Slack channel"
+        description: "Test results have been posted to the configured Slack channel successfully"
       });
     } catch (error) {
+      console.error('Slack posting error:', error);
       toast({
         title: "Slack Error",
-        description: "Failed to post results to Slack",
+        description: "Failed to post results to Slack. Check your bot token and channel configuration.",
         variant: "destructive"
       });
     }
@@ -198,7 +221,7 @@ const TestCasesList = ({ testConfig }: TestCasesListProps) => {
           </Button>
           <Button variant="outline" onClick={postToSlack}>
             <Slack className="h-4 w-4 mr-2" />
-            Post to Slack
+            Post to Channel
           </Button>
         </div>
       </div>
